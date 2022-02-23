@@ -1,10 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Text.Json;
+using FrameworklessWebApplication.Exceptions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using JsonSerializer = System.Text.Json.JsonSerializer;
@@ -13,54 +9,80 @@ namespace FrameworklessWebApplication
 {
     public class Service
     {
-        private List<Person> _personList;
+        private IDatabase _database;
 
-        public Service(List<Person> personList)
+        public Service()
         {
-            _personList = personList;
+            _database = new MockDatabase();
         }
-        public List<Person> GetPersonList(string httpVerb, string requestBody = null, string nameInUrl = null)
+
+        public List<Person> GetPersonList()
         {
-            Person person;
+            return _database.GetPersonList();
+        }
+
+        public List<Person> AddPerson(string requestBody)
+        {
+            Person person = CreatePerson(requestBody);
             
+            List<Person> personList = _database.GetPersonList();
+
+            if (!personList.Exists(p => p.Name == person.Name))
+            {
+                personList = _database.AddPerson(person);
+            }
+
+            return personList;
+        }
+
+        public List<Person> DeletePerson(string requestBody)
+        {
+            Person person = CreatePerson(requestBody);
+
+            List<Person> personList = _database.GetPersonList();
+
+            if (personList.Exists(p => p.Name == person.Name && p.Name != Constants.InitialPerson))
+            {
+                personList = _database.DeletePerson(person);
+            }
+            return personList;
+        }
+
+        public List<Person> UpdatePerson(string requestBody, string oldName)
+        {
+            Person newPerson = CreatePerson(requestBody);
+            
+            List<Person> personList = _database.GetPersonList();
+        
+            if (personList.Exists(p => p.Name == oldName))
+            {
+                personList = _database.UpdatePerson(oldName, newPerson.Name);
+            }
+        
+            return personList;
+        }
+
+        private Person CreatePerson(string requestBody)
+        {
+            if (String.IsNullOrWhiteSpace(requestBody))
+            {
+                throw new EmptyBodyException();
+            }
+            
+            Person person;
+
             try
             {
                 JObject.Parse(requestBody);
                 person = JsonSerializer.Deserialize<Person>(requestBody);
             }
-            catch (Exception e)
+            catch (JsonReaderException)
             {
                 person = new Person(requestBody);
             }
 
-            if (httpVerb == "POST")
-            {
-                if (!_personList.Exists(p => p.Name == person.Name))
-                {
-                    _personList.Add(person);
-                }
-            }
-            else if (httpVerb == "DELETE")
-            {
-                if (_personList.Exists(p => p.Name == person.Name) && person.Name != "Mark")
-                {
-                    int index = _personList.FindIndex(p => p.Name == person.Name);
-                    _personList.RemoveAt(index);
-                }
-            }
-            else if (httpVerb == "PUT")
-            {
-                if (_personList.Exists(p => p.Name == nameInUrl))
-                {
-                    int index = _personList.FindIndex(a => a.Name == nameInUrl);
-                    _personList[index].Name = person.Name;
-                }
-            }
-
-            return _personList;
+            return person;
         }
-        
-        
-        
+
     }
 }

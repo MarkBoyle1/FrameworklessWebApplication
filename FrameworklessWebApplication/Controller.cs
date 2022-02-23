@@ -1,92 +1,70 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Text;
+using FrameworklessWebApplication.Exceptions;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace FrameworklessWebApplication
 {
     public class Controller
     {
+        private string _time;
+        private string _date;
         private Service _service;
+        private int _statusCode;
 
-        public Controller()
+        public Controller(string time = "", string date = "")
         {
-            List<Person> initialPersonList = new List<Person>()
-            {
-                new Person("Mark")
-            };
-            _service = new Service(initialPersonList);
+            _time = time;
+            _date = date;
+            _service = new Service();
         }
-        public HttpListenerResponse ProcessRequest(HttpListenerContext context)
+        public Response ProcessRequest(Request request)
         {
-            string url = context.Request.Url.ToString();
-            string httpVerb = context.Request.HttpMethod;
-            string requestBody = new StreamReader(context.Request.InputStream).ReadToEnd();
-            
-            string[] splitURL = url.Split('/');
-            string nameInUrl = splitURL[4];
-            
-            List<Person> personList = _service.GetPersonList(httpVerb, requestBody, nameInUrl);
+            List<Person> personList;
+
+            try
+            {
+                switch (request.HttpVerb)
+                {
+                    case Constants.POST:
+                        personList = _service.AddPerson(request.Body);
+                        _statusCode = Constants.StatusCodeCreated;
+                        break;
+                    case Constants.DELETE:
+                        personList = _service.DeletePerson(request.Body);
+                        _statusCode = Constants.StatusCodeOk;
+                        break;
+                    case Constants.PUT:
+                        personList = _service.UpdatePerson(request.Body, request.NameInUrl);
+                        _statusCode = Constants.StatusCodeOk;
+                        break;
+                    case Constants.GET:
+                        personList = _service.GetPersonList();
+                        _statusCode = Constants.StatusCodeOk;
+                        break;
+                    default:
+                        return new Response(String.Empty, Constants.StatusCodeMethodNotAllowed);
+                }
+            }
+            catch (EmptyBodyException)
+            {
+                return new Response(Messages.EmptyBodyMessage, Constants.StatusCodesBadRequest);
+            }
             
             string responseBody;
 
-            if (nameInUrl == "greeting")
+            if(request.RequestsGreeting)
             {
-                responseBody = GetGreeting(personList);
+                responseBody = Messages.MakeGreeting(personList, _time, _date);
             }
             else
             {
                 responseBody = JsonConvert.SerializeObject(personList);
             }
+
+            Response response = new Response(responseBody, _statusCode);
             
-            var buffer = Encoding.UTF8.GetBytes(responseBody);
-
-            // Obtain a response object.
-            HttpListenerResponse response = context.Response;
-            // Get a response stream and write the response to it.
-            response.ContentLength64 = buffer.Length;
-            Stream output = response.OutputStream;
-            output.Write(buffer, 0, buffer.Length);
-
-            // You must close the output stream.
-            output.Close();
-
             return response;
-        }
-        
-        
-        private string GetGreeting(List<Person> personList)
-        {
-            var time = DateTime.Now.ToLongTimeString();
-            var date = DateTime.Now.ToLongDateString();
-
-            StringBuilder names = new StringBuilder();
-
-            foreach (var p in personList)
-            {
-                names.Append(FormatName(p.Name, personList));
-            }
-            
-            return $"Hello {names}, the time on the server is {time} {date}";
-        }
-        
-        private string FormatName(string name, List<Person> nameList)
-        {
-            if (name == nameList.Last().Name)
-            {
-                return name;
-            }
-
-            if (name == nameList[nameList.Count - 2].Name)
-            {
-                return name + " and ";
-            }
-
-            return name + ", ";
         }
     }
 }

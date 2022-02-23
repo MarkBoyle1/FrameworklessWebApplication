@@ -1,5 +1,4 @@
 ﻿
-
 namespace FrameworklessWebApplication
 {
     class Program
